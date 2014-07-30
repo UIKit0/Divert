@@ -2130,7 +2130,7 @@ static UINT16 WinDivertFormatString(const char *token, char **endptr, UINT8 *str
     if (endptr != NULL) {
         *endptr = (char *)(str + (sp - str));
     }
-    return (sp - str);
+    return (UINT16)(sp - str);
 }
 
 /***************************************************************************/
