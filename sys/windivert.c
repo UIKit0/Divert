@@ -2801,13 +2801,16 @@ static BOOL windivert_filter(PNET_BUFFER buffer, UINT32 if_idx,
         DEBUG("FILTER: REJECT (packet length too small)");
         return FALSE;
     }
-    cpy_len = (tot_len < sizeof(storage)? tot_len: sizeof(storage));
+    cpy_len = (tot_len < sizeof(storage) ? tot_len : sizeof(storage));
     payload = (UINT8 *) ExAllocatePoolWithTag(NonPagedPool, tot_len, WINDIVERT_PKTBUF_TAG);
     if (payload == NULL) {
         return FALSE;
     }
     payload_p = (UINT8 *)NdisGetDataBuffer(buffer, (ULONG)tot_len, payload, 1,
         0);
+    if (payload_p == NULL) {
+        return FALSE;
+    }
     RtlCopyMemory(storage, payload_p, sizeof(storage));
     if (headers == NULL)
     {
