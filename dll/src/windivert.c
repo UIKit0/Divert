@@ -31,6 +31,15 @@
 #include "windivert.h"
 #include "windivert_device.h"
 
+//  INFO(Santiago): extensions to enable layer7 filtering by wildcards
+#include <layer7_filtering/types.h>
+#include <layer7_filtering/ctx.h>
+#include <layer7_filtering/compiler.h>
+#include <layer7_filtering/eval.h>
+
+static LAYER7_MATCHING_EXPR_STACK_CTX *layer7_matching_program = NULL;
+UINT64 usr_filter_flags = WINDIVERT_FLAG_SNIFF;
+
 #define WINDIVERT_DRIVER_NAME           L"WinDivert"
 #define WINDIVERT_DRIVER32_SYS          L"\\" WINDIVERT_DRIVER_NAME L"32.sys"
 #define WINDIVERT_DRIVER64_SYS          L"\\" WINDIVERT_DRIVER_NAME L"64.sys"
@@ -210,6 +219,12 @@ static void WinDivertInitPseudoHeaderV6(PWINDIVERT_IPV6HDR ipv6_header,
     PWINDIVERT_PSEUDOV6HDR pseudov6_header, UINT8 protocol, UINT len);
 static UINT16 WinDivertHelperCalcChecksum(PVOID pseudo_header,
     UINT16 pseudo_header_len, PVOID data, UINT len);
+static BOOL WinDivertApplyLayer7SubFilter(unsigned char **pPacket,
+                                          UINT *readlen, HANDLE handle,
+                                          PWINDIVERT_ADDRESS addr,
+                                          UINT64 flags,
+                                          LPOVERLAPPED overlapped,
+                                          BOOL extended);
 
 #ifdef WINDIVERT_DEBUG
 static void WinDivertFilterDump(windivert_ioctl_filter_t filter, UINT16 len);
@@ -409,7 +424,7 @@ WinDivertDriverInstallExit:
         CloseServiceHandle(manager);
     }
     SetLastError(err);
-    
+
     return service;
 }
 
@@ -474,6 +489,33 @@ static BOOL WinDivertIoControlEx(HANDLE handle, DWORD code, UINT8 arg8,
         *iolen = (UINT)iolen0;
     }
     return result;
+}
+
+/*
+ * INFO(Santiago): Open a WinDivert handle with support to layer7 content filtering.
+ */
+extern WINDIVERTEXPORT HANDLE WinDivertOpenLayer7SubFilterEx(const char *filter,
+                                                             const char *layer7_filter,
+                                                             WINDIVERT_LAYER layer,
+                                                             INT16 priority,
+                                                             UINT64 flags) {
+    HANDLE filter_handle = INVALID_HANDLE_VALUE;
+    if (layer7_matching_program != NULL) {
+        DelLayer7MatchingExprStackCtx(layer7_matching_program);
+        layer7_matching_program = NULL;
+        usr_filter_flags = WINDIVERT_FLAG_SNIFF;
+    }
+    layer7_matching_program = CompileLayer7MatchingFilter(layer7_filter, strlen(layer7_filter), NULL);
+    if (layer7_matching_program == NULL) {
+        return INVALID_HANDLE_VALUE;
+    }
+    filter_handle = WinDivertOpen(filter, layer, priority, flags);
+    if (filter_handle == INVALID_HANDLE_VALUE) {
+        DelLayer7MatchingExprStackCtx(layer7_matching_program);
+        layer7_matching_program = NULL;
+    }
+    usr_filter_flags = flags;
+    return filter_handle;
 }
 
 /*
@@ -600,13 +642,73 @@ extern HANDLE WinDivertOpen(const char *filter, WINDIVERT_LAYER layer,
 }
 
 /*
+ * INFO(Santiago): Apply the layer7 filtering using wildcard matching.
+ */
+static BOOL WinDivertApplyLayer7SubFilter(unsigned char **pPacket,
+                                          UINT *readlen, HANDLE handle,
+                                          PWINDIVERT_ADDRESS addr,
+                                          UINT64 flags,
+                                          LPOVERLAPPED overlapped,
+                                          BOOL extended) {
+    size_t payload_start_offset = 0;
+    BOOL retval = FALSE;
+    UINT writelen = 0;
+    unsigned char protocol = 0;
+    unsigned char version = 0;
+    if (readlen != NULL && pPacket != NULL && *readlen) {
+        version = (((*((unsigned char **)pPacket)[0]) & 0xf0) >> 4);
+        if (version == 4) {
+            protocol = (*((unsigned char **)pPacket))[9]; //  INFO(Santiago): protocol field
+        } else if (version == 6) {
+            protocol = (*((unsigned char **)pPacket))[6]; //  INFO(Santiago): next header field
+        }
+        switch (protocol) {
+            case  6:  // INFO(Santiago): TCP Packet
+            case 17:  // INFO(Santiago): UDP Packet
+                if (version == 4) {
+                    payload_start_offset = (4 * ((*(unsigned char *)(*pPacket)) & 0x0f)) + (protocol == 6) ? 20 : 7;
+                    if (payload_start_offset > *readlen) {
+                        payload_start_offset = 0;
+                    }
+                } else if (version == 6) {
+                    // INFO(Santiago): IPv6 header is fixed to 40 bytes plus tcp header default size.
+                    payload_start_offset = (protocol == 6) ? (((*readlen) < 60) ? 0 : 60) : 47;
+                }
+                if ((*readlen) - payload_start_offset > 0) {
+                    retval = Layer7MatchingFilterEvaluate((*pPacket) + payload_start_offset,
+                                                          (*readlen) - payload_start_offset,
+                                                          layer7_matching_program);
+                }
+                break;
+        }
+        if (retval == FALSE) {
+            if (usr_filter_flags == 0) {
+                if (!extended) {
+                    WinDivertSend(handle, (*pPacket), *readlen, addr, &writelen);
+                } else {
+                    WinDivertSendEx(handle, (*pPacket), *readlen, flags, addr, &writelen, overlapped);
+                }
+            }
+            memset((*pPacket), '\0', *readlen);
+            *readlen = 0;
+        }
+    }
+    return retval;
+}
+
+/*
  * Receive a WinDivert packet.
  */
 extern BOOL WinDivertRecv(HANDLE handle, PVOID pPacket, UINT packetLen,
     PWINDIVERT_ADDRESS addr, UINT *readlen)
 {
-    return WinDivertIoControl(handle, IOCTL_WINDIVERT_RECV, 0, (UINT64)addr,
-        pPacket, packetLen, readlen);
+    BOOL retval = WinDivertIoControl(handle, IOCTL_WINDIVERT_RECV, 0, (UINT64)addr,
+                        pPacket, packetLen, readlen);
+
+    if (retval && layer7_matching_program != NULL) {
+        retval = WinDivertApplyLayer7SubFilter(&((unsigned char *)pPacket), readlen, handle, addr, 0, NULL, FALSE);
+    }
+    return retval;
 }
 
 /*
@@ -616,6 +718,7 @@ extern BOOL WinDivertRecvEx(HANDLE handle, PVOID pPacket, UINT packetLen,
     UINT64 flags, PWINDIVERT_ADDRESS addr, UINT *readlen,
     LPOVERLAPPED overlapped)
 {
+    BOOL retval = FALSE;
     if (flags != 0)
     {
         SetLastError(ERROR_INVALID_PARAMETER);
@@ -623,14 +726,18 @@ extern BOOL WinDivertRecvEx(HANDLE handle, PVOID pPacket, UINT packetLen,
     }
     if (overlapped == NULL)
     {
-        return WinDivertIoControl(handle, IOCTL_WINDIVERT_RECV, 0,
-            (UINT64)addr, pPacket, packetLen, readlen);
+        retval = WinDivertIoControl(handle, IOCTL_WINDIVERT_RECV, 0,
+                    (UINT64)addr, pPacket, packetLen, readlen);
     }
     else
     {
-        return WinDivertIoControlEx(handle, IOCTL_WINDIVERT_RECV, 0,
-            (UINT64)addr, pPacket, packetLen, readlen, overlapped);
+        retval = WinDivertIoControlEx(handle, IOCTL_WINDIVERT_RECV, 0,
+                    (UINT64)addr, pPacket, packetLen, readlen, overlapped);
     }
+    if (retval && layer7_matching_program != NULL) {
+        retval = WinDivertApplyLayer7SubFilter(&((unsigned char *)pPacket), readlen, handle, addr, flags, overlapped, TRUE);
+    }
+    return retval;
 }
 
 /*
@@ -672,6 +779,11 @@ extern BOOL WinDivertSendEx(HANDLE handle, PVOID pPacket, UINT packetLen,
  */
 extern BOOL WinDivertClose(HANDLE handle)
 {
+    if (layer7_matching_program != NULL) {
+        DelLayer7MatchingExprStackCtx(layer7_matching_program);
+        layer7_matching_program = NULL;
+        usr_filter_flags = WINDIVERT_FLAG_SNIFF;
+    }
     return CloseHandle(handle);
 }
 

@@ -2,6 +2,7 @@ LIBRARY WinDivert
 EXPORTS
     WinDivertDllEntry
     WinDivertOpen
+    WinDivertOpenLayer7SubFilterEx
     WinDivertRecv
     WinDivertRecvEx
     WinDivertSend

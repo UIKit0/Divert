@@ -19,6 +19,19 @@
 
 @echo off
 
+if /i "%_BUILDARCH%"=="x86" goto set_i386_folder_name
+
+goto set_amd64_folder_name
+
+:set_i386_folder_name
+set ARCHFOLDER=i386
+goto set_wddk_install
+
+:set_amd64_folder_name
+set ARCHFOLDER=amd64
+goto set_wddk_install
+
+:set_wddk_install
 set WDDK_INSTALL=install\WDDK\
 mkdir %WDDK_INSTALL%
 
