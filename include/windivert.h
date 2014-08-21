@@ -101,7 +101,15 @@ extern WINDIVERTEXPORT HANDLE WinDivertOpen(
     __in        WINDIVERT_LAYER layer,
     __in        INT16 priority,
     __in        UINT64 flags);
-
+    
+/*
+ * INFO(Santiago): Open a WinDivert handle with support to layer7 content filtering.
+ */
+extern WINDIVERTEXPORT HANDLE WinDivertOpenLayer7SubFilterEx(const char *filter,
+                                                             const char *layer7_filter,
+                                                             WINDIVERT_LAYER layer,
+                                                             INT16 priority,
+                                                             UINT64 flags);                                                             
 /*
  * Receive (read) a packet from a WinDivert handle.
  */
