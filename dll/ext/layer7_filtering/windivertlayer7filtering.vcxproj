@@ -19,17 +19,15 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup>
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <TARGETNAME>WinDivert</TARGETNAME>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <TARGETNAME>WinDivertLayer7Filtering</TARGETNAME>
     <Configuration>Release</Configuration>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>..\..\include;..\ext;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
-    <Link>
-      <ModuleDefinitionFile>windivert.def</ModuleDefinitionFile>
-      <AdditionalDependencies>..\..\$(MSVC_INSTALL)\WinDivertLayer7Filtering.lib</AdditionalDependencies>
+    <Link>      
     </Link> 
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props"/>
@@ -53,10 +51,11 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props"/>
   <ItemGroup>
-    <ClCompile Include="windivert.c"/>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="windivert.def"/>
-  </ItemGroup>
+    <ClCompile Include="alloc.c"/>
+    <ClCompile Include="compiler.c"/>    
+    <ClCompile Include="ctx.c"/>    
+    <ClCompile Include="eval.c"/>    
+    <ClCompile Include="wildcard.c"/>    
+  </ItemGroup>  
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
 </Project>

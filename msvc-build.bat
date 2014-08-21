@@ -42,14 +42,21 @@ if not exist %WDDK_INSTALL% (
 )
 mkdir %MSVC_INSTALL%
 
-:: Build WinDivert.dll
-cd dll
+:: Build WinDivertLayer7Filtering.lib
+cd dll\ext\layer7_filtering
 msbuild /p:Platform=%PLATFORM% /p:OutDir=build\
-copy /Y build\WinDivert.dll ..\%MSVC_INSTALL%
-copy /Y build\WinDivert.lib ..\%MSVC_INSTALL%
-copy /Y build\WinDivert.lib ..\%MSVC_INSTALL%..
+copy /Y build\WinDivertLayer7Filtering.lib ..\..\..\%MSVC_INSTALL%
 rd /s /q build\
-cd ..
+cd ..\..\..\
+
+:: Build WinDivert.dll
+cd dll\src\
+msbuild /p:Platform=%PLATFORM% /p:OutDir=build\
+copy /Y build\WinDivert.dll ..\..\%MSVC_INSTALL%
+copy /Y build\WinDivert.lib ..\..\%MSVC_INSTALL%
+copy /Y build\WinDivert.lib ..\..\%MSVC_INSTALL%..
+rd /s /q build\
+cd ..\..\
 
 :: Build netdump
 cd examples\netdump
