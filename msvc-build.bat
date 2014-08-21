@@ -86,6 +86,13 @@ copy /Y build\webfilter.exe ..\..\%MSVC_INSTALL%
 rd /s /q build\
 cd ..\..
 
+:: Build layer7filter
+cd examples\layer7filter
+msbuild /p:Platform=%PLATFORM% /p:OutDir=build\
+copy /Y build\l7f.exe ..\..\%MSVC_INSTALL%
+rd /s /q build\
+cd ..\..
+
 :: Copy files
 copy /Y %WDDK_INSTALL%\WinDivert%BITS%.sys %MSVC_INSTALL%
 

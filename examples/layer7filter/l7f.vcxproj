@@ -20,7 +20,7 @@
   </ItemGroup>
   <PropertyGroup>
     <ConfigurationType>Application</ConfigurationType>
-    <TARGETNAME>netdump</TARGETNAME>
+    <TARGETNAME>l7f</TARGETNAME>
     <Configuration>Release</Configuration>
   </PropertyGroup>
   <ItemDefinitionGroup>
@@ -28,7 +28,7 @@
       <AdditionalIncludeDirectories>..\..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>ws2_32.lib;..\..\install\MSVC\WinDivert.lib</AdditionalDependencies>
+      <AdditionalDependencies>..\..\install\MSVC\WinDivert.lib</AdditionalDependencies>
     </Link> 
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props"/>
